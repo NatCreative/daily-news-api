@@ -65,7 +65,7 @@ Simple, family-friendly language with early childhood development phrases that h
 No fictional details – only summarise what is inferred from the captions/notes
 Highlight learning, social connection, and play
 Mention the Room Name in the response e.g. "Today in the ${roomName} room..."
-Close with a warm ending and include educator names in the sign-off (e.g., 'Karlee, Shona, and Emma')
+Close with a warm ending and include educator names in the sign-off or if educator names are not provided add "[add present educator names here]"
 
 Write like a real educator communicating to parents, using friendly and professional tone. Structure should flow naturally from opener → main activities → learning highlights → warm closing with educator names.
 `; 
