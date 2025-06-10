@@ -48,6 +48,7 @@ export default async function handler(req, res) {
   }
 
   const roomName = userRecord.room_name || 'the room';
+  const { content } = req.body;
 
   const userPrompt = `
 You are an experienced early childhood educator in Australia. Based on the notes below, write a short and natural-sounding "Daily News" story to be shared with families.
