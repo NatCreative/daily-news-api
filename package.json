@@ -1,0 +1,9 @@
+{
+  "name": "daily-news-api",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.33.0",
+    "openai": "^4.2.0"
+  }
+}
