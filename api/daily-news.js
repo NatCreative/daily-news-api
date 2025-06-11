@@ -1,13 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
+// ✅ FIXED: Use ANON key for JWT verification, not service role key
 const supabase = createClient(
   process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.SUPABASE_ANON_KEY  // ✅ Changed from SERVICE_ROLE_KEY to ANON_KEY
 );
 
 export default async function handler(req, res) {
   // ✅ Updated CORS to allow your domain and any localhost for testing
-  res.setHeader('Access-Control-Allow-Origin', '*'); // More permissive for debugging
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
@@ -33,7 +34,7 @@ export default async function handler(req, res) {
 
     console.log('Token extracted, length:', token.length);
 
-    // ✅ Verify user with better error handling
+    // ✅ FIXED: Verify user with JWT token using anon key
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     
     if (authError) {
@@ -51,7 +52,13 @@ export default async function handler(req, res) {
 
     console.log('User authenticated:', user.id);
 
-    // ✅ Fetch user profile
+    // ✅ Create service client for database operations (if needed for admin operations)
+    const serviceSupabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    // ✅ Fetch user profile using regular client (RLS will handle permissions)
     const { data: userRecord, error: userFetchError } = await supabase
       .from('user_profiles')
       .select('generations, tier, room_name')
@@ -171,7 +178,7 @@ Write like a real educator communicating to parents, using friendly and professi
       .replace(/\n{3,}/g, '\n\n')
       .replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
 
-    // ✅ Update generation count
+    // ✅ Update generation count using regular client (RLS will handle permissions)
     const { error: updateError } = await supabase
       .from('user_profiles')
       .update({ generations: userRecord.generations + 1 })
