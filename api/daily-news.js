@@ -17,11 +17,20 @@ export default async function handler(req, res) {
   const token = authHeader.replace('Bearer ', '');
   if (!token) return res.status(401).json({ message: 'Unauthorized: No token provided' });
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
-    console.error('Auth error:', authError);
+  // ✅ Use fetch to validate JWT on the server
+  const authResponse = await fetch(`${process.env.SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      apikey: process.env.SUPABASE_SERVICE_ROLE_KEY
+    }
+  });
+
+  if (!authResponse.ok) {
+    console.error('Auth error:', await authResponse.text());
     return res.status(401).json({ message: 'Unauthorized: Invalid or expired token' });
   }
+
+  const user = await authResponse.json();
 
   const { data: userRecord, error: userFetchError } = await supabase
     .from('user_profiles')
@@ -39,14 +48,12 @@ export default async function handler(req, res) {
     return res.status(403).json({ message: 'You have reached your free limit of 10 generations this month. Upgrade to continue.' });
   }
 
-  // ✅ Only get content from request body
   const { content } = req.body;
-  
+
   if (!content) {
     return res.status(400).json({ message: 'Content is required' });
   }
 
-  // ✅ Only check content for inappropriate material
   const inappropriate = /(sex|violence|drugs|abuse|nudity|suicide|murder|killing)/i;
   if (inappropriate.test(content)) {
     console.warn(`Inappropriate request detected from user ${user.id}.`);
