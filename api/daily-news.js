@@ -6,51 +6,104 @@ const supabase = createClient(
 );
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', 'https://little-plans-a950d2.webflow.io');
+  // ✅ Updated CORS to allow your domain and any localhost for testing
+  res.setHeader('Access-Control-Allow-Origin', '*'); // More permissive for debugging
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (req.method !== 'POST') return res.status(405).json({ message: 'Only POST requests allowed' });
 
-  const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ message: 'Unauthorized: No token provided' });
+  try {
+    // ✅ Enhanced token extraction and validation
+    const authHeader = req.headers.authorization;
+    console.log('Auth header present:', !!authHeader);
+    console.log('Auth header value:', authHeader ? authHeader.substring(0, 20) + '...' : 'None');
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Invalid authorization header format');
+      return res.status(401).json({ message: 'Unauthorized: Invalid authorization header format' });
+    }
 
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
-    console.error('Auth error:', authError);
-    return res.status(401).json({ message: 'Unauthorized: Invalid or expired token' });
-  }
+    const token = authHeader.replace('Bearer ', '').trim();
+    if (!token) {
+      console.error('Empty token after extraction');
+      return res.status(401).json({ message: 'Unauthorized: No token provided' });
+    }
 
-  const { data: userRecord, error: userFetchError } = await supabase
-    .from('user_profiles')
-    .select('generations, tier, room_name')
-    .eq('id', user.id)
-    .single();
+    console.log('Token extracted, length:', token.length);
 
-  if (userFetchError || !userRecord) {
-    console.error('User fetch error:', userFetchError);
-    return res.status(500).json({ message: 'User record not found or database error', details: userFetchError?.message });
-  }
+    // ✅ Verify user with better error handling
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    
+    if (authError) {
+      console.error('Supabase auth error:', authError);
+      return res.status(401).json({ 
+        message: 'Unauthorized: Token validation failed', 
+        details: authError.message 
+      });
+    }
+    
+    if (!user) {
+      console.error('No user returned from token');
+      return res.status(401).json({ message: 'Unauthorized: Invalid token' });
+    }
 
-  if (userRecord.tier === 'Free' && userRecord.generations >= 10) {
-    console.log(`User ${user.id} has reached the free limit.`);
-    return res.status(403).json({ message: 'You have reached your free limit of 10 generations this month. Upgrade to continue.' });
-  }
+    console.log('User authenticated:', user.id);
 
-  const { photoCaptions, additionalNotes } = req.body;
+    // ✅ Fetch user profile
+    const { data: userRecord, error: userFetchError } = await supabase
+      .from('user_profiles')
+      .select('generations, tier, room_name')
+      .eq('id', user.id)
+      .single();
 
-  const inappropriate = /(sex|violence|drugs|abuse|nudity|suicide|murder|killing)/i;
-  if (inappropriate.test(photoCaptions + additionalNotes)) {
-    console.warn(`Inappropriate request detected from user ${user.id}.`);
-    return res.status(400).json({ message: 'This request falls outside the scope of early childhood education.' });
-  }
+    if (userFetchError) {
+      console.error('User fetch error:', userFetchError);
+      return res.status(500).json({ 
+        message: 'User record not found or database error', 
+        details: userFetchError?.message 
+      });
+    }
 
-  const roomName = userRecord.room_name || 'the room';
-  const { content } = req.body;
+    if (!userRecord) {
+      console.error('No user record found for user:', user.id);
+      return res.status(404).json({ message: 'User profile not found' });
+    }
 
-  const userPrompt = `
+    // ✅ Check generation limits
+    if (userRecord.tier === 'Free' && userRecord.generations >= 10) {
+      console.log(`User ${user.id} has reached the free limit.`);
+      return res.status(403).json({ 
+        message: 'You have reached your free limit of 10 generations this month. Upgrade to continue.' 
+      });
+    }
+
+    // ✅ Extract content from request body
+    const { content, photoCaptions, additionalNotes } = req.body;
+    
+    console.log('Request body keys:', Object.keys(req.body));
+    console.log('Content received:', !!content);
+
+    if (!content) {
+      console.error('No content provided in request body');
+      return res.status(400).json({ message: 'Content is required' });
+    }
+
+    // ✅ Content filtering
+    const inappropriate = /(sex|violence|drugs|abuse|nudity|suicide|murder|killing)/i;
+    const contentToCheck = (content || '') + (photoCaptions || '') + (additionalNotes || '');
+    
+    if (inappropriate.test(contentToCheck)) {
+      console.warn(`Inappropriate request detected from user ${user.id}.`);
+      return res.status(400).json({ 
+        message: 'This request falls outside the scope of early childhood education.' 
+      });
+    }
+
+    const roomName = userRecord.room_name || 'the room';
+
+    const userPrompt = `
 You are an experienced early childhood educator in Australia. Based on the notes below, write a short and natural-sounding "Daily News" story to be shared with families.
 Your tone should be warm, professional, and engaging. Avoid exaggeration or made-up detail. Base everything strictly on what is written. Group activities, sensory experiences, creativity, play-based learning, and social interaction are often featured.
 Use simple paragraph structure and natural language — no bullet points, headings, or markdown. Write 3–4 short paragraphs, aiming for approximately 150-200 words.
@@ -70,7 +123,9 @@ Close with a warm ending and include educator names in the sign-off or if educat
 Write like a real educator communicating to parents, using friendly and professional tone. Structure should flow naturally from opener → main activities → learning highlights → warm closing with educator names.
 `; 
 
-  try {
+    // ✅ OpenAI API call
+    console.log('Making OpenAI API request...');
+    
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -88,14 +143,27 @@ Write like a real educator communicating to parents, using friendly and professi
       })
     });
 
+    if (!response.ok) {
+      console.error('OpenAI API error:', response.status, response.statusText);
+      const errorText = await response.text();
+      console.error('OpenAI error details:', errorText);
+      return res.status(500).json({ 
+        message: 'OpenAI API error', 
+        details: `${response.status}: ${response.statusText}` 
+      });
+    }
+
     const data = await response.json();
+    console.log('OpenAI response received');
 
     if (!data.choices || !data.choices[0]?.message?.content) {
-      console.error('Invalid OpenAI response:', data);
+      console.error('Invalid OpenAI response structure:', data);
       return res.status(500).json({ message: 'OpenAI response missing or invalid.' });
     }
 
     const rawText = data.choices[0].message.content.trim();
+    
+    // ✅ Text cleaning
     const cleanedText = rawText
       .replace(/^(#+\s?.+)$/gm, '\n\n$1\n\n')
       .replace(/^\s*[-*+]\s*$/gm, '')
@@ -103,6 +171,7 @@ Write like a real educator communicating to parents, using friendly and professi
       .replace(/\n{3,}/g, '\n\n')
       .replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
 
+    // ✅ Update generation count
     const { error: updateError } = await supabase
       .from('user_profiles')
       .update({ generations: userRecord.generations + 1 })
@@ -110,14 +179,22 @@ Write like a real educator communicating to parents, using friendly and professi
 
     if (updateError) {
       console.error('Error updating generations:', updateError);
-      return res.status(500).json({ message: 'Failed to update usage count.', details: updateError?.message });
+      return res.status(500).json({ 
+        message: 'Failed to update usage count.', 
+        details: updateError?.message 
+      });
     }
 
     console.log(`Daily News generated for user ${user.id}. Generations now ${userRecord.generations + 1}`);
 
     return res.status(200).json({ text: cleanedText });
+
   } catch (error) {
     console.error('Unhandled server error:', error);
-    return res.status(500).json({ message: 'Server error', details: error.message });
+    return res.status(500).json({ 
+      message: 'Server error', 
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 }
