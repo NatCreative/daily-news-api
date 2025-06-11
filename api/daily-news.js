@@ -107,13 +107,8 @@ Write like a real educator communicating to parents, using friendly and professi
       return res.status(500).json({ message: 'OpenAI response missing or invalid.' });
     }
 
-    const rawText = data.choices[0].message.content.trim();
-    const cleanedText = rawText
-      .replace(/^(#+\s?.+)$/gm, '\n\n$1\n\n')
-      .replace(/^\s*[-*+]\s*$/gm, '')
-      .replace(/^\s*[-*+]\s*\n/gm, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/([^\n])\n([^\n])/g, '$1\n\n$2');
+const cleanedText = data.choices[0].message.content.trim();
+
 
     const { error: updateError } = await supabase
       .from('user_profiles')
